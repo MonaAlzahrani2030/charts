@@ -180,11 +180,17 @@ function log(action, detail) {
   }
 }
 /* Tell Qualtrics how tall the page is, so the iframe can fit it (see README). */
+/* Measures the content itself, not documentElement.scrollHeight: scrollHeight is never smaller than
+   the frame, so the frame could only grow (and grew on every animation frame). */
+let lastPostedHeight = -1;
 function postHeight() {
   try {
-    if (window.parent !== window) {
-      window.parent.postMessage({ source: 'vis-study', type: 'height', chart: CHART_ID, height: document.documentElement.scrollHeight }, '*');
-    }
+    if (window.parent === window) return;
+    const app = document.getElementById('app');
+    const h = Math.ceil(app.getBoundingClientRect().bottom + window.scrollY);
+    if (Math.abs(h - lastPostedHeight) < 2) return;
+    lastPostedHeight = h;
+    window.parent.postMessage({ source: 'vis-study', type: 'height', chart: CHART_ID, height: h }, '*');
   } catch (e) {}
 }
 
@@ -345,6 +351,13 @@ function placeLabels(items, bounds) {
 
 /* Rough text width for label placement (avoids measuring every frame). */
 function textWidth(str, size, bold) { return str.length * size * (bold ? 0.6 : 0.55); }
+
+/* Re-measure whenever the content changes size (panel filled, text size, description opened). */
+window.addEventListener('load', () => {
+  const app = document.getElementById('app');
+  if (app && window.ResizeObserver) new ResizeObserver(() => postHeight()).observe(app);
+  postHeight();
+});
 
 </script>
 <script>
