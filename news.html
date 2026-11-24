@@ -445,9 +445,6 @@ function build() {
     // G4, G7: main message first, in bold; it does not answer the tasks
     const intro = htmlEl('p', { class: 'intro' }, wrap);
     htmlEl('strong', { class: 'takeaway' }, intro, 'Most topics were mentioned more often over time, with sudden rises or falls around major events.');
-    howTo(wrap, 'Select a year on the chart to see its details beside the chart, or click a topic to show it on its own. You can also play through the years, change the display (light or dark) and the text size, show a text description, or download the data.');
-  } else {
-    howTo(wrap, 'Point at the chart to see the values for a year.');
   }
   legendEl = htmlEl('div', { class: 'legend', role: V === 2 ? 'group' : null, 'aria-label': V === 2 ? 'Show one topic' : null }, wrap);
   htmlEl('p', { class: 'unit' }, wrap, UNIT);
