@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>News topics chart</title>
+<style>
+:root { --fs: 1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: calc(15px * var(--fs));
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Version 1: conventional design on a white background */
+body.v1 {
+  --bg: #ffffff; --text: #1a1a1a; --muted: #4a4a4a; --grid: #e3e3e3; --axis: #555555;
+  --panel: #f2f2f2; --line: #bdbdbd; --focus: #0b5cad; --tip-bg: #ffffff; --tip-border: #8a8a8a;
+}
+/* Version 2: soft default, optional dark mode (G3, G11) */
+body.v2.mode-light {
+  --bg: #f5f2ec; --text: #262626; --muted: #4d4a45; --grid: #e0dace; --axis: #6b665e;
+  --panel: #ebe5da; --line: #c9c1b3; --focus: #1f5f99; --pressed-bg: #3d3a35; --pressed-text: #f5f2ec;
+}
+body.v2.mode-dark {
+  --bg: #1f2226; --text: #e7e4df; --muted: #b9b4ac; --grid: #343a40; --axis: #9c978f;
+  --panel: #2a2e33; --line: #4a5058; --focus: #8fc1f0; --pressed-bg: #d9d4cc; --pressed-text: #1f2226;
+}
+
+.wrap { max-width: 920px; margin: 0 auto; padding: 16px; }
+h1 { font-size: calc(20px * var(--fs)); line-height: 1.3; margin: 0 0 0.5em; }
+/* Intro text: WCAG 1.4.12 values used as defaults (line height 1.5 x font size, 2 x font size after the paragraph) */
+.intro { font-size: calc(15px * var(--fs)); line-height: 1.5; margin: 0 0 2em; max-width: 64ch; }
+.intro .takeaway { display: block; font-size: calc(17px * var(--fs)); font-weight: 700; color: var(--text); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 6px 0 12px; }
+.tgroup { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tlabel { color: var(--muted); margin-right: 4px; }
+
+button {
+  font: inherit; font-size: calc(14px * var(--fs)); line-height: 1.2;
+  min-height: 40px; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer;
+}
+body.v2 button[aria-pressed="true"] { background: var(--pressed-bg); color: var(--pressed-text); border-color: var(--pressed-bg); }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, g:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+g:focus { outline: none; }
+g:focus-visible circle.bubble { stroke: var(--focus); stroke-width: 3; }
+
+.layout { display: flex; gap: 16px; align-items: flex-start; }
+.layout.stack { flex-direction: column; }
+.chartbox { flex: 1 1 auto; min-width: 0; position: relative; }
+.chartbox svg { display: block; overflow: visible; max-width: 100%; height: auto; }
+svg text { fill: var(--text); }
+.axis text, svg text.muted { fill: var(--muted); }
+.axis text.ttl { fill: var(--text); }
+svg text.wm { fill: var(--grid); }
+.unit { color: var(--muted); font-size: calc(13px * var(--fs)); margin: 2px 0 0; }
+/* Version 2 right-hand column: display options, year or play controls, then details */
+.side { flex: 0 0 240px; max-width: 240px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.layout.stack .side { flex-basis: auto; width: 100%; max-width: none; }
+.side .toolbar { flex-direction: column; align-items: stretch; gap: 12px; margin: 0; }
+.side .tgroup, .side .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.side .tlabel { flex-basis: 100%; margin: 0; }
+.side .hint { max-width: none; }
+.panel {
+  min-width: 0; background: var(--panel); border-radius: 10px; padding: 12px 14px;
+  font-size: calc(14px * var(--fs));
+}
+.panel h2 { font-size: calc(16px * var(--fs)); margin: 0 0 6px; }
+.panel p { margin: 0 0 8px; }
+.panel table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.panel td { white-space: nowrap; }
+.panel .units { color: var(--muted); font-size: calc(12.5px * var(--fs)); margin: 6px 0 0; }
+.panel th, .panel td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.panel th { font-weight: 600; color: var(--muted); font-size: calc(12.5px * var(--fs)); }
+.panel tr.current td { font-weight: 700; }
+.panel .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.controls .hint { color: var(--muted); font-size: calc(13.5px * var(--fs)); max-width: 52ch; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 4px; font-size: calc(14px * var(--fs)); }
+.legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.legend button.item { min-height: 36px; padding: 4px 10px; }
+.legend .key { display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
+.legend.vertical { flex-direction: column; gap: 8px; margin: 6px 0 0; }
+.legend .key.dot { width: 13px; height: 13px; border-radius: 50%; border: 1.2px solid #222222; box-sizing: border-box; }
+
+.note { color: var(--muted); font-size: calc(13px * var(--fs)); margin-top: 8px; }
+.caption { font-size: calc(14px * var(--fs)); max-width: 64ch; }
+.desc { background: var(--panel); border-radius: 10px; padding: 10px 14px; margin-top: 10px; font-size: calc(14px * var(--fs)); }
+.desc[hidden] { display: none; }
+
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--tip-bg); border: 1px solid var(--tip-border); border-radius: 4px;
+  padding: 6px 8px; font-size: 13px; line-height: 1.4; box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  white-space: nowrap;
+}
+.tooltip[hidden] { display: none; }
+
+.slider-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; }
+.slider-row input[type=range] { width: 220px; }
+.slider-ticks { display: flex; justify-content: space-between; width: 220px; font-size: 12px; color: var(--muted); }
+
+.preview {
+  background: #fff3c4; color: #3a2e00; padding: 6px 12px; font: 13px system-ui, sans-serif;
+  border-bottom: 1px solid #e0cf87; display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center;
+}
+.preview a { color: #3a2e00; }
+.preview a[aria-current="page"] { font-weight: 700; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+@keyframes drawline { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+rect.no-ring:focus, rect.no-ring:focus-visible { outline: none; }
+
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+'use strict';
+/* ---------- Settings from the link ----------
+   ?v=1 or ?v=2   version (1 = basic fixes, 2 = basic fixes + autism-informed changes)
+   ?d=A or ?d=B   dataset
+   ?rid=...       optional response code (for logging to a sheet)
+   No v in the link (or &preview=1) shows a yellow preview bar for the research team only. */
+const qs = new URLSearchParams(location.search);
+const PREVIEW = !qs.has('v') || qs.get('preview') === '1';
+const V = qs.get('v') === '2' ? 2 : 1;
+const D = (qs.get('d') || 'A').toUpperCase() === 'B' ? 'B' : 'A';
+const RID = qs.get('rid') || '';
+
+/* Optional: paste a Google Apps Script web-app URL here to also send clicks to a sheet.
+   Leave empty to send clicks only to Qualtrics (see README). */
+const LOG_URL = '';
+
+const mq = (q) => { try { return window.matchMedia(q).matches; } catch (e) { return false; } };
+const REDUCED_MOTION = mq('(prefers-reduced-motion: reduce)');
+const SYSTEM_DARK = mq('(prefers-color-scheme: dark)');
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  if (attrs) for (const k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function htmlEl(tag, attrs, parent, text) {
+  const n = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'class') n.className = attrs[k];
+    else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+  }
+  if (text != null) n.textContent = text;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+const fmtInt = (n) => Math.round(n).toLocaleString('en-AU');
+
+/* ---------- Click logging ---------- */
+function log(action, detail) {
+  const msg = {
+    source: 'vis-study', chart: CHART_ID, v: V, d: D, rid: RID,
+    action, detail: detail == null ? '' : String(detail), t: new Date().toISOString()
+  };
+  try { if (window.parent !== window) window.parent.postMessage(msg, '*'); } catch (e) {}
+  if (LOG_URL) {
+    try {
+      fetch(LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(msg) });
+    } catch (e) {}
+  }
+}
+/* Tell Qualtrics how tall the page is, so the iframe can fit it (see README). */
+function postHeight() {
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({ source: 'vis-study', type: 'height', chart: CHART_ID, height: document.documentElement.scrollHeight }, '*');
+    }
+  } catch (e) {}
+}
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(c => {
+    const s = String(c);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ---------- Display mode and text size (Version 2 only) ---------- */
+let MODE = 'light';
+let SCALE = 1;
+const changeListeners = [];
+function onDisplayChange(fn) { changeListeners.push(fn); }
+function setMode(m, byUser) {
+  MODE = m;
+  document.body.classList.toggle('mode-dark', m === 'dark');
+  document.body.classList.toggle('mode-light', m !== 'dark');
+  if (byUser) log('display_mode', m);
+  changeListeners.forEach(f => f());
+}
+function setScale(s, byUser) {
+  SCALE = s;
+  document.documentElement.style.setProperty('--fs', String(s));
+  if (byUser) log('text_size', s > 1 ? 'large' : 'normal');
+  changeListeners.forEach(f => f());
+}
+
+function setupPage() {
+  document.body.classList.add('v' + V);
+  if (V === 2) setMode(SYSTEM_DARK ? 'dark' : 'light', false); // G11: respect system setting
+  if (PREVIEW) buildPreviewBar();
+  log('open');
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') log('hidden');
+    else log('visible');
+  });
+}
+
+function buildPreviewBar() {
+  const bar = document.createElement('div');
+  bar.className = 'preview';
+  htmlEl('strong', null, bar, 'Preview for the research team');
+  htmlEl('span', null, bar, '(participants never see this bar):');
+  [['1', 'A'], ['1', 'B'], ['2', 'A'], ['2', 'B']].forEach(([v, d]) => {
+    const a = htmlEl('a', { href: '?v=' + v + '&d=' + d + '&preview=1' }, bar, 'Version ' + v + ' · Data ' + d);
+    if (String(V) === v && D === d && qs.has('v')) a.setAttribute('aria-current', 'page');
+  });
+  document.body.insertBefore(bar, document.body.firstChild);
+}
+
+/* Visible toolbar (G12) with display mode (G11) and text size (G13). Version 2 only. */
+function buildToolbar(parent, opts) {
+  const tb = htmlEl('div', { class: 'toolbar', role: 'group', 'aria-label': 'Display and tools' }, parent);
+
+  const g1 = htmlEl('div', { class: 'tgroup' }, tb);
+  htmlEl('span', { class: 'tlabel' }, g1, 'Display:');
+  const bL = htmlEl('button', { type: 'button' }, g1, 'Light');
+  const bD = htmlEl('button', { type: 'button' }, g1, 'Dark');
+  const syncMode = () => {
+    bL.setAttribute('aria-pressed', String(MODE !== 'dark'));
+    bD.setAttribute('aria-pressed', String(MODE === 'dark'));
+  };
+  bL.onclick = () => { setMode('light', true); syncMode(); };
+  bD.onclick = () => { setMode('dark', true); syncMode(); };
+  syncMode();
+
+  const g2 = htmlEl('div', { class: 'tgroup' }, tb);
+  htmlEl('span', { class: 'tlabel' }, g2, 'Text size:');
+  const bN = htmlEl('button', { type: 'button' }, g2, 'Normal');
+  const bB = htmlEl('button', { type: 'button' }, g2, 'Large');
+  const syncSize = () => {
+    bN.setAttribute('aria-pressed', String(SCALE === 1));
+    bB.setAttribute('aria-pressed', String(SCALE > 1));
+  };
+  bN.onclick = () => { setScale(1, true); syncSize(); };
+  bB.onclick = () => { setScale(1.25, true); syncSize(); };
+  syncSize();
+
+  return tb;
+}
+
+/* Text description (G14) and download (G18), placed under the chart. Version 2 only. */
+function buildTools(parent, opts) {
+  const g3 = htmlEl('div', { class: 'tools', role: 'group', 'aria-label': 'More about this chart' }, parent);
+  const bDesc = htmlEl('button', { type: 'button', 'aria-expanded': 'false', 'aria-controls': 'desc' }, g3, 'Show text description');
+  bDesc.onclick = () => {
+    const open = bDesc.getAttribute('aria-expanded') !== 'true';
+    bDesc.setAttribute('aria-expanded', String(open));
+    bDesc.textContent = open ? 'Hide text description' : 'Show text description';
+    opts.onDescribe(open);
+    log('text_description', open ? 'open' : 'close');
+  };
+  const bDl = htmlEl('button', { type: 'button' }, g3, 'Download data (CSV)');
+  bDl.onclick = () => { opts.onDownload(); log('download'); };
+  return g3;
+}
+
+/* Side panel beside the chart when there is room, below it when narrow. */
+function chartLayout(wrapWidth, hasPanel) {
+  // Panel goes beside the chart only if the chart keeps at least ~460 px (more with large text)
+  const side = hasPanel && (wrapWidth - 256) >= 460 * (V === 2 ? SCALE : 1);
+  const chartW = side ? wrapWidth - 240 - 16 : wrapWidth;
+  return { side, chartW };
+}
+
+/* Label placement: try positions around a point and pick the one with least overlap. */
+function placeLabels(items, bounds) {
+  // items: {x, y, r, w, h, key}; returns map key -> {x, y, anchor}
+  const placed = [];
+  const out = {};
+  const circles = items.map(it => ({ x: it.x, y: it.y, r: it.r }));
+  const overlapRect = (a, b) => Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)) * Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+  const overlapCircle = (rc, c) => {
+    const cx = Math.max(rc.x1, Math.min(c.x, rc.x2)), cy = Math.max(rc.y1, Math.min(c.y, rc.y2));
+    const d = Math.hypot(c.x - cx, c.y - cy);
+    return d < c.r ? (c.r - d) * 20 : 0;
+  };
+  const order = items.slice().sort((a, b) => b.r - a.r);
+  for (const it of order) {
+    const gap = 4;
+    const cands = [
+      { x: it.x + it.r + gap, y: it.y, anchor: 'start' },
+      { x: it.x - it.r - gap, y: it.y, anchor: 'end' },
+      { x: it.x, y: it.y - it.r - gap - it.h / 2, anchor: 'middle' },
+      { x: it.x, y: it.y + it.r + gap + it.h / 2, anchor: 'middle' },
+      { x: it.x + it.r * 0.7 + gap, y: it.y - it.r * 0.7 - it.h / 2, anchor: 'start' },
+      { x: it.x - it.r * 0.7 - gap, y: it.y - it.r * 0.7 - it.h / 2, anchor: 'end' },
+      { x: it.x + it.r * 0.7 + gap, y: it.y + it.r * 0.7 + it.h / 2, anchor: 'start' },
+      { x: it.x - it.r * 0.7 - gap, y: it.y + it.r * 0.7 + it.h / 2, anchor: 'end' }
+    ];
+    let best = null, bestScore = Infinity;
+    for (const c of cands) {
+      const x1 = c.anchor === 'start' ? c.x : c.anchor === 'end' ? c.x - it.w : c.x - it.w / 2;
+      const rc = { x1, x2: x1 + it.w, y1: c.y - it.h / 2, y2: c.y + it.h / 2 };
+      let score = 0;
+      for (const p of placed) score += overlapRect(rc, p) * 3;
+      for (const ci of circles) if (!(ci.x === it.x && ci.y === it.y)) score += overlapCircle(rc, ci);
+      if (rc.x1 < bounds.x1) score += (bounds.x1 - rc.x1) * 50;
+      if (rc.x2 > bounds.x2) score += (rc.x2 - bounds.x2) * 50;
+      if (rc.y1 < bounds.y1) score += (bounds.y1 - rc.y1) * 50;
+      if (rc.y2 > bounds.y2) score += (rc.y2 - bounds.y2) * 50;
+      if (score < bestScore) { bestScore = score; best = { c, rc }; }
+    }
+    placed.push(best.rc);
+    out[it.key] = best.c;
+  }
+  return out;
+}
+
+/* Rough text width for label placement (avoids measuring every frame). */
+function textWidth(str, size, bold) { return str.length * size * (bold ? 0.6 : 0.55); }
+
+</script>
+<script>
+'use strict';
+const CHART_ID = 'news';
+const YEARS = Array.from({ length: 17 }, (_, i) => 2006 + i);
+
+/* Made-up data: mentions per 1,000 news articles. Dataset B mirrors A's shapes
+   (one topic with three peaks, one with event spikes, one steady rise, one dip, one big spike). */
+const SETS = {
+  A: {
+    title: 'How often the news mentioned five topics, 2006–2022',
+    series: [
+      { name: 'Weather',    values: [22, 24, 48, 30, 28, 30, 31, 29, 30, 34, 38, 56, 44, 42, 40, 50, 66] },
+      { name: 'Sport',      values: [30, 31, 38, 33, 32, 34, 52, 36, 35, 37, 49, 38, 40, 42, 30, 41, 44] },
+      { name: 'Technology', values: [12, 13, 14, 15, 17, 20, 24, 28, 30, 29, 31, 32, 34, 36, 35, 38, 40] },
+      { name: 'Travel',     values: [35, 36, 34, 38, 42, 44, 40, 46, 44, 42, 45, 41, 40, 38, 18, 24, 34] },
+      { name: 'Food',       values: [20, 21, 22, 23, 24, 24, 25, 26, 27, 28, 28, 30, 31, 33, 54, 45, 36] }
+    ],
+    events: [{ year: 2008, label: 'Major storm' }, { year: 2012, label: 'Summer Games' }, { year: 2020, label: 'Travel limits' }]
+  },
+  B: {
+    title: 'How often the news mentioned five topics, 2006–2022',
+    series: [
+      { name: 'Gardening', values: [24, 26, 30, 50, 31, 29, 30, 32, 30, 35, 40, 39, 58, 45, 41, 52, 64] },
+      { name: 'Cycling',   values: [28, 30, 31, 33, 34, 36, 37, 38, 55, 37, 36, 39, 50, 41, 33, 42, 45] },
+      { name: 'Music',     values: [14, 15, 15, 17, 19, 22, 25, 27, 29, 31, 30, 33, 35, 36, 34, 39, 42] },
+      { name: 'Film',      values: [38, 37, 39, 41, 44, 43, 47, 45, 44, 46, 43, 42, 41, 39, 20, 26, 36] },
+      { name: 'Cooking',   values: [18, 19, 21, 22, 22, 24, 25, 25, 27, 27, 29, 30, 32, 34, 56, 47, 38] }
+    ],
+    events: [{ year: 2009, label: 'City festival' }, { year: 2014, label: 'Bike championship' }, { year: 2020, label: 'Lockdowns' }]
+  }
+};
+const SET = SETS[D];
+const UNIT = 'Mentions per 1,000 articles';
+
+const PALETTE = {
+  v1: ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#8A6D00'],
+  light: ['#2f6496', '#a8532d', '#2f7553', '#7b4f99', '#7d6413'],
+  dark: ['#8cb8e6', '#eba27e', '#86c9a4', '#c9a3e3', '#d9c27a']
+};
+const pal = () => V === 1 ? PALETTE.v1 : (MODE === 'dark' ? PALETTE.dark : PALETTE.light);
+
+let hoverIdx = null;      // Version 1 tooltip year
+let selIdx = null;        // Version 2 selected year
+let isolated = null;      // Version 2 isolated topic
+let reveal = YEARS.length - 1;   // how much of the line is drawn (Version 2 play)
+let playing = false, playTimer = null, playRAF = null;
+let introStart = null;   // Version 1 opening animation start time
+const INTRO_MS = 3000;
+let G = null;              // current geometry
+let clipRect = null, markerG = null, hitRect = null;
+let lastWidth = 0;
+const root = document.getElementById('app');
+let svg, chartbox, panel, tooltip, desc, layoutEl, legendEl, playBtn, stopBtn, hintEl;
+
+function build() {
+  setupPage();
+  const wrap = htmlEl('div', { class: 'wrap' }, root);
+  htmlEl('h1', { id: 'title' }, wrap, SET.title);
+  if (V === 2) {
+    // G4, G7: main message first, in bold; it does not answer the tasks
+    const intro = htmlEl('p', { class: 'intro' }, wrap);
+    htmlEl('strong', { class: 'takeaway' }, intro, 'Most topics were mentioned more often over time, with sudden rises or falls around major events.');
+  }
+  legendEl = htmlEl('div', { class: 'legend', role: V === 2 ? 'group' : null, 'aria-label': V === 2 ? 'Show one topic' : null }, wrap);
+  htmlEl('p', { class: 'unit' }, wrap, UNIT);
+  layoutEl = htmlEl('div', { class: 'layout' }, wrap);
+  chartbox = htmlEl('div', { class: 'chartbox' }, layoutEl);
+  svg = svgEl('svg', { role: 'img', 'aria-labelledby': 'title svgdesc' }, chartbox);
+  tooltip = htmlEl('div', { class: 'tooltip', hidden: '' }, chartbox);
+  if (V === 2) {
+    const side = htmlEl('div', { class: 'side' }, layoutEl);
+    buildToolbar(side, {});
+    // G13, G16: motion only when the user asks, with a warning and pause/stop
+    const ctr = htmlEl('div', { class: 'controls' }, side);
+    playBtn = htmlEl('button', { type: 'button', 'aria-describedby': 'playhint' }, ctr, '▶ Play through the years');
+    stopBtn = htmlEl('button', { type: 'button', hidden: '' }, ctr, '■ Stop and show all');
+    hintEl = htmlEl('span', { class: 'hint', id: 'playhint' }, ctr,
+      REDUCED_MOTION
+        ? 'This draws the lines one year at a time (about 8 seconds). Your device is set to reduce motion, so the chart changes in steps. You can pause or stop at any time.'
+        : 'This animates the chart: the lines are drawn one year at a time (about 8 seconds). You can pause or stop at any time.');
+    playBtn.onclick = togglePlay;
+    stopBtn.onclick = () => { stopPlay(); log('stop'); };
+    panel = htmlEl('div', { class: 'panel', 'aria-live': 'polite' }, side);
+  }
+  htmlEl('p', { class: V === 2 ? 'note caption' : 'note' }, wrap, V === 2
+    ? 'Each line shows how often news articles mentioned one topic each year. Dashed lines mark the events. The data are made up for this study.'
+    : UNIT + '. The data are made up for this study.');
+  if (V === 2) {
+    buildTools(wrap, { onDescribe: (open) => { desc.hidden = !open; updateDesc(); postHeight(); }, onDownload: download });
+    desc = htmlEl('div', { class: 'desc', id: 'desc', hidden: '' }, wrap);
+  }
+
+  onDisplayChange(() => render());
+  new ResizeObserver(() => { const w = wrap.clientWidth; if (w !== lastWidth) { lastWidth = w; render(); } }).observe(wrap);
+  if (V === 1) introStart = performance.now();
+  lastWidth = wrap.clientWidth;
+  render();
+}
+
+/* Version 1: lines draw themselves when the page opens (common in public visualisations).
+   Uses a CSS animation with a negative delay so a re-render continues where it was. */
+function applyIntro(path) {
+  if (V !== 1 || introStart == null) return;
+  const elapsed = performance.now() - introStart;
+  if (elapsed >= INTRO_MS) return;
+  path.setAttribute('pathLength', '1');
+  path.style.strokeDasharray = '1';
+  path.style.animation = `drawline ${INTRO_MS}ms ease-in-out ${-elapsed}ms both`;
+}
+
+function renderLegend() {
+  legendEl.innerHTML = '';
+  const cols = pal();
+  SET.series.forEach((s, i) => {
+    if (V === 2) {
+      const b = htmlEl('button', { type: 'button', class: 'item', 'aria-pressed': String(isolated === s.name) }, legendEl);
+      const k = htmlEl('span', { class: 'key', 'aria-hidden': 'true' }, b); k.style.background = cols[i];
+      htmlEl('span', null, b, s.name);
+      b.onclick = () => {
+        isolated = isolated === s.name ? null : s.name;
+        log(isolated ? 'isolate_topic' : 'show_all_topics', s.name);
+        render();
+        legendEl.querySelectorAll('button')[i].focus();
+      };
+    } else {
+      const it = htmlEl('span', { class: 'item' }, legendEl);
+      const k = htmlEl('span', { class: 'key', 'aria-hidden': 'true' }, it); k.style.background = cols[i];
+      htmlEl('span', null, it, s.name);
+    }
+  });
+  if (V === 2 && isolated) {
+    const b = htmlEl('button', { type: 'button', class: 'item' }, legendEl, 'Show all topics');
+    b.onclick = () => { log('show_all_topics', isolated); isolated = null; render(); };
+  }
+}
+
+function render() {
+  renderLegend();
+  const wrapW = root.querySelector('.wrap').clientWidth - 32;
+  const lay = chartLayout(wrapW, V === 2);
+  layoutEl.classList.toggle('stack', !lay.side);
+  const W = Math.max(300, lay.chartW);
+  const H = Math.round(Math.min(430, Math.max(300, W * 0.56)));
+  const fs = (V === 2 ? SCALE : 1) * 13;
+  const m = { l: 44 + (fs - 13) * 2, r: 14, t: 2 * (fs + 3) + 12, b: 34 + (fs - 13) };
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  svgEl('desc', { id: 'svgdesc' }, svg).textContent = describe();
+
+  const X = i => m.l + i / (YEARS.length - 1) * (W - m.l - m.r);
+  const Y = v => H - m.b - v / 80 * (H - m.t - m.b);
+  const cols = pal();
+
+  const gA = svgEl('g', { class: 'axis', 'aria-hidden': 'true' }, svg);
+  for (let v = 0; v <= 80; v += 20) {
+    svgEl('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: 'var(--grid)' }, gA);
+    svgEl('text', { x: m.l - 8, y: Y(v), 'text-anchor': 'end', 'dominant-baseline': 'middle', 'font-size': fs }, gA).textContent = v;
+  }
+  const step = W < 520 ? 4 : 2;
+  YEARS.forEach((y, i) => {
+    if (i % step !== 0 && i !== YEARS.length - 1) return;
+    svgEl('text', { x: X(i), y: H - m.b + fs + 6, 'text-anchor': 'middle', 'font-size': fs }, gA).textContent = y;
+  });
+  svgEl('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: 'var(--axis)' }, gA);
+
+  // Event markers (both versions); labels on two rows so they do not collide
+  const gE = svgEl('g', { 'aria-hidden': 'true' }, svg);
+  let lastEnd = -Infinity, row = 0;
+  SET.events.forEach(ev => {
+    const i = YEARS.indexOf(ev.year), x = X(i);
+    svgEl('line', { x1: x, x2: x, y1: m.t - 4, y2: H - m.b, stroke: 'var(--axis)', 'stroke-dasharray': '4 4' }, gE);
+    const w = textWidth(ev.label, fs * 0.95);
+    let anchor = 'start', tx = x + 4;
+    if (tx + w > W - m.r) { anchor = 'end'; tx = x - 4; }
+    const start = anchor === 'start' ? tx : tx - w;
+    row = start < lastEnd + 6 ? 1 - row : 0;
+    lastEnd = start + w;
+    svgEl('text', { class: 'muted', x: tx, y: m.t - 8 - row * (fs + 3), 'text-anchor': anchor, 'font-size': fs * 0.95 }, gE).textContent = ev.label;
+  });
+
+  // Lines
+  const clipId = 'reveal';
+  const defs = svgEl('defs', null, svg);
+  const cp = svgEl('clipPath', { id: clipId }, defs);
+  const revealX = X(Math.min(reveal, YEARS.length - 1)) + 1;
+  clipRect = svgEl('rect', { x: 0, y: 0, width: V === 2 ? revealX : W, height: H }, cp);
+  const gL = svgEl('g', { 'clip-path': `url(#${clipId})` }, svg);
+  SET.series.forEach((s, si) => {
+    const faded = V === 2 && isolated && isolated !== s.name;
+    const d = s.values.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join('');
+    const p = svgEl('path', { class: 'series', d, fill: 'none', stroke: cols[si], 'stroke-width': faded ? 1.5 : 2.6,
+      'stroke-opacity': faded ? 0.18 : 1, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, gL);
+    applyIntro(p);
+  });
+
+  markerG = svgEl('g', { 'aria-hidden': 'true' }, svg);
+  G = { W, H, m, X, Y };
+
+  // Interaction layer: the plot area is focusable; arrow keys move between years
+  const hadFocus = hitRect && document.activeElement === hitRect;
+  const hadNoRing = hitRect && hitRect.classList.contains('no-ring');
+  hitRect = svgEl('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent',
+    tabindex: '0', role: 'application',
+    'aria-label': V === 2 ? 'Chart. Press the left or right arrow key to choose a year.' : 'Chart. Press the left or right arrow key to read values by year.',
+    style: V === 2 ? 'cursor:pointer' : null }, svg);
+  const idxAt = (evt) => {
+    const r = svg.getBoundingClientRect();
+    const px = evt.clientX - r.left;
+    return Math.max(0, Math.min(YEARS.length - 1, Math.round((px - m.l) / (W - m.l - m.r) * (YEARS.length - 1))));
+  };
+  if (V === 1) {
+    hitRect.addEventListener('pointerenter', () => log('hover_chart'));
+    hitRect.addEventListener('pointermove', (e) => {
+      const i = idxAt(e);
+      if (i !== hoverIdx) { hoverIdx = i; updateMarker(); showTip(i, e); } else moveTip(e);
+    });
+    hitRect.addEventListener('pointerleave', () => { hoverIdx = null; tooltip.hidden = true; updateMarker(); });
+  } else {
+    hitRect.addEventListener('click', (e) => selectYear(idxAt(e)));
+  }
+  hitRect.addEventListener('pointerdown', () => hitRect.classList.add('no-ring'));
+  hitRect.addEventListener('keydown', (e) => { hitRect.classList.remove('no-ring'); keyMove(e); });
+  hitRect.addEventListener('blur', () => { if (V === 1) { tooltip.hidden = true; } });
+  if (hadFocus) { hitRect.focus({ preventScroll: true }); if (hadNoRing) hitRect.classList.add('no-ring'); }
+
+  updateMarker();
+  updatePanel();
+  updateDesc();
+  postHeight();
+}
+
+function updateMarker() {
+  if (!markerG) return;
+  while (markerG.firstChild) markerG.removeChild(markerG.firstChild);
+  const idx = V === 1 ? hoverIdx : selIdx;
+  if (idx == null || (V === 2 && idx > reveal)) return;
+  const { m, H, X, Y } = G, cols = pal();
+  svgEl('line', { x1: X(idx), x2: X(idx), y1: m.t, y2: H - m.b, stroke: 'var(--text)', 'stroke-width': 1, 'stroke-opacity': 0.6 }, markerG);
+  SET.series.forEach((s, si) => {
+    if (V === 2 && isolated && isolated !== s.name) return;
+    svgEl('circle', { cx: X(idx), cy: Y(s.values[idx]), r: 4.5, fill: cols[si], stroke: 'var(--bg)', 'stroke-width': 1.5 }, markerG);
+  });
+}
+
+function updateReveal() {
+  if (clipRect && G) clipRect.setAttribute('width', G.X(Math.min(reveal, YEARS.length - 1)) + 1);
+  updateMarker();
+}
+
+function keyMove(e) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const cur = V === 1 ? hoverIdx : selIdx;
+  let i = cur == null ? 0 : cur + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0);
+  if (e.key === 'Home') i = 0;
+  if (e.key === 'End') i = YEARS.length - 1;
+  i = Math.max(0, Math.min(YEARS.length - 1, i));
+  if (V === 1) {
+    hoverIdx = i;
+    updateMarker();
+    const r = svg.getBoundingClientRect();
+    showTip(i, { clientX: r.left + G.X(i), clientY: r.top + G.m.t + 30 });
+    log('key_year', YEARS[i]);
+  } else {
+    selectYear(i);
+  }
+}
+
+function selectYear(i) {
+  selIdx = i;
+  log('select_year', YEARS[i]);
+  updateMarker();
+  updatePanel();
+  postHeight();
+}
+
+/* Version 1 tooltip: follows the pointer and covers part of the chart. */
+function showTip(i, evt) {
+  const cols = pal();
+  tooltip.innerHTML = '';
+  htmlEl('strong', null, tooltip, String(YEARS[i]));
+  SET.series.forEach((s, si) => {
+    const row = htmlEl('div', null, tooltip);
+    const sw = htmlEl('span', { class: 'swatch' }, row);
+    sw.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:${cols[si]}`;
+    row.appendChild(document.createTextNode(`${s.name}: ${s.values[i]}`));
+  });
+  tooltip.hidden = false;
+  moveTip(evt);
+}
+function moveTip(evt) {
+  const W = G.W;
+  const r = svg.getBoundingClientRect();
+  const px = evt.clientX - r.left, py = evt.clientY - r.top;
+  const tw = tooltip.offsetWidth;
+  let left = px + 14;
+  if (left + tw > W) left = px - tw - 14;
+  tooltip.style.left = Math.max(0, left) + 'px';
+  tooltip.style.top = Math.max(0, py - 20) + 'px';
+}
+
+/* Version 2: play through the years only when asked, with pause and stop. */
+function togglePlay() {
+  if (playing) { pausePlay(); log('pause', YEARS[Math.floor(reveal)]); return; }
+  if (reveal >= YEARS.length - 1) reveal = 0;
+  playing = true;
+  playBtn.textContent = '❚❚ Pause';
+  stopBtn.hidden = false;
+  log('play');
+  const perYear = 8000 / (YEARS.length - 1);
+  if (REDUCED_MOTION) {
+    reveal = Math.floor(reveal);
+    updateReveal();
+    playTimer = setInterval(() => {
+      reveal = Math.min(YEARS.length - 1, Math.floor(reveal) + 1);
+      updateReveal();
+      if (reveal >= YEARS.length - 1) finishPlay();
+    }, perYear);
+  } else {
+    let last = performance.now();
+    const step = (now) => {
+      reveal = Math.min(YEARS.length - 1, reveal + (now - last) / perYear);
+      last = now;
+      updateReveal();
+      if (reveal >= YEARS.length - 1) finishPlay(); else playRAF = requestAnimationFrame(step);
+    };
+    playRAF = requestAnimationFrame(step);
+  }
+}
+function clearTimers() {
+  if (playTimer) clearInterval(playTimer);
+  if (playRAF) cancelAnimationFrame(playRAF);
+  playTimer = null; playRAF = null;
+}
+function pausePlay() {
+  clearTimers();
+  playing = false;
+  playBtn.textContent = '▶ Continue';
+  updatePanel();
+}
+function finishPlay() {
+  clearTimers();
+  playing = false;
+  playBtn.textContent = '▶ Play through the years';
+  stopBtn.hidden = true;
+  updatePanel();
+  log('play_finished');
+}
+function stopPlay() {
+  clearTimers();
+  playing = false;
+  reveal = YEARS.length - 1;
+  playBtn.textContent = '▶ Play through the years';
+  stopBtn.hidden = true;
+  updateReveal();
+  updatePanel();
+}
+
+/* Version 2 side panel: all values for the selected year, beside the chart (G9, G15). */
+function updatePanel() {
+  if (!panel) return;
+  panel.innerHTML = '';
+  if (selIdx == null) {
+    htmlEl('h2', null, panel, 'Details');
+    htmlEl('p', null, panel, 'Select a year on the chart to see all values for that year here. You can also use the left and right arrow keys.');
+    return;
+  }
+  const y = YEARS[selIdx];
+  htmlEl('h2', null, panel, String(y));
+  const ev = SET.events.find(e => e.year === y);
+  if (ev) htmlEl('p', null, panel, 'Event: ' + ev.label);
+  const cols = pal();
+  const t = htmlEl('table', null, panel);
+  const hr = htmlEl('tr', null, htmlEl('thead', null, t));
+  htmlEl('th', { scope: 'col' }, hr, 'Topic');
+  htmlEl('th', { scope: 'col' }, hr, 'Mentions');
+  const tb = htmlEl('tbody', null, t);
+  SET.series.map((s, si) => ({ s, si })).sort((a, b) => b.s.values[selIdx] - a.s.values[selIdx]).forEach(({ s, si }) => {
+    const tr = htmlEl('tr', null, tb);
+    const td = htmlEl('td', null, tr);
+    const sw = htmlEl('span', { class: 'swatch', 'aria-hidden': 'true' }, td); sw.style.background = cols[si];
+    td.appendChild(document.createTextNode(s.name));
+    htmlEl('td', null, tr, String(s.values[selIdx]));
+  });
+  if (selIdx > reveal) htmlEl('p', { style: 'margin-top:8px' }, panel, 'The animation has not reached this year yet.');
+}
+
+function describe() {
+  const parts = SET.series.map(s => {
+    const max = Math.max(...s.values), mi = s.values.indexOf(max);
+    return `${s.name}: ${s.values[0]} in 2006 and ${s.values[s.values.length - 1]} in 2022, highest in ${YEARS[mi]} (${max}).`;
+  });
+  return `Line chart of ${UNIT.toLowerCase()} for five topics from 2006 to 2022. Events marked: ` +
+    SET.events.map(e => `${e.label} (${e.year})`).join(', ') + '. ' + parts.join(' ');
+}
+function updateDesc() { if (desc && !desc.hidden) desc.textContent = describe(); }
+
+function download() {
+  const rows = [['Year', ...SET.series.map(s => s.name + ' (' + UNIT.toLowerCase() + ')'), 'Event']];
+  YEARS.forEach((y, i) => {
+    const ev = SET.events.find(e => e.year === y);
+    rows.push([y, ...SET.series.map(s => s.values[i]), ev ? ev.label : '']);
+  });
+  rows.push([]);
+  rows.push(['Note: the data are made up for this study.']);
+  downloadCSV('news-topics.csv', rows);
+}
+
+build();
+
+</script>
+</body>
+</html>

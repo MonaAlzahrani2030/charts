@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Health spending chart</title>
+<style>
+:root { --fs: 1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: calc(15px * var(--fs));
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Version 1: conventional design on a white background */
+body.v1 {
+  --bg: #ffffff; --text: #1a1a1a; --muted: #4a4a4a; --grid: #e3e3e3; --axis: #555555;
+  --panel: #f2f2f2; --line: #bdbdbd; --focus: #0b5cad; --tip-bg: #ffffff; --tip-border: #8a8a8a;
+}
+/* Version 2: soft default, optional dark mode (G3, G11) */
+body.v2.mode-light {
+  --bg: #f5f2ec; --text: #262626; --muted: #4d4a45; --grid: #e0dace; --axis: #6b665e;
+  --panel: #ebe5da; --line: #c9c1b3; --focus: #1f5f99; --pressed-bg: #3d3a35; --pressed-text: #f5f2ec;
+}
+body.v2.mode-dark {
+  --bg: #1f2226; --text: #e7e4df; --muted: #b9b4ac; --grid: #343a40; --axis: #9c978f;
+  --panel: #2a2e33; --line: #4a5058; --focus: #8fc1f0; --pressed-bg: #d9d4cc; --pressed-text: #1f2226;
+}
+
+.wrap { max-width: 920px; margin: 0 auto; padding: 16px; }
+h1 { font-size: calc(20px * var(--fs)); line-height: 1.3; margin: 0 0 0.5em; }
+/* Intro text: WCAG 1.4.12 values used as defaults (line height 1.5 x font size, 2 x font size after the paragraph) */
+.intro { font-size: calc(15px * var(--fs)); line-height: 1.5; margin: 0 0 2em; max-width: 64ch; }
+.intro .takeaway { display: block; font-size: calc(17px * var(--fs)); font-weight: 700; color: var(--text); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 6px 0 12px; }
+.tgroup { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tlabel { color: var(--muted); margin-right: 4px; }
+
+button {
+  font: inherit; font-size: calc(14px * var(--fs)); line-height: 1.2;
+  min-height: 40px; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer;
+}
+body.v2 button[aria-pressed="true"] { background: var(--pressed-bg); color: var(--pressed-text); border-color: var(--pressed-bg); }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, g:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+g:focus { outline: none; }
+g:focus-visible circle.bubble { stroke: var(--focus); stroke-width: 3; }
+
+.layout { display: flex; gap: 16px; align-items: flex-start; }
+.layout.stack { flex-direction: column; }
+.chartbox { flex: 1 1 auto; min-width: 0; position: relative; }
+.chartbox svg { display: block; overflow: visible; max-width: 100%; height: auto; }
+svg text { fill: var(--text); }
+.axis text, svg text.muted { fill: var(--muted); }
+.axis text.ttl { fill: var(--text); }
+svg text.wm { fill: var(--grid); }
+.unit { color: var(--muted); font-size: calc(13px * var(--fs)); margin: 2px 0 0; }
+/* Version 2 right-hand column: display options, year or play controls, then details */
+.side { flex: 0 0 240px; max-width: 240px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.layout.stack .side { flex-basis: auto; width: 100%; max-width: none; }
+.side .toolbar { flex-direction: column; align-items: stretch; gap: 12px; margin: 0; }
+.side .tgroup, .side .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.side .tlabel { flex-basis: 100%; margin: 0; }
+.side .hint { max-width: none; }
+.panel {
+  min-width: 0; background: var(--panel); border-radius: 10px; padding: 12px 14px;
+  font-size: calc(14px * var(--fs));
+}
+.panel h2 { font-size: calc(16px * var(--fs)); margin: 0 0 6px; }
+.panel p { margin: 0 0 8px; }
+.panel table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.panel td { white-space: nowrap; }
+.panel .units { color: var(--muted); font-size: calc(12.5px * var(--fs)); margin: 6px 0 0; }
+.panel th, .panel td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.panel th { font-weight: 600; color: var(--muted); font-size: calc(12.5px * var(--fs)); }
+.panel tr.current td { font-weight: 700; }
+.panel .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.controls .hint { color: var(--muted); font-size: calc(13.5px * var(--fs)); max-width: 52ch; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 4px; font-size: calc(14px * var(--fs)); }
+.legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.legend button.item { min-height: 36px; padding: 4px 10px; }
+.legend .key { display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
+.legend.vertical { flex-direction: column; gap: 8px; margin: 6px 0 0; }
+.legend .key.dot { width: 13px; height: 13px; border-radius: 50%; border: 1.2px solid #222222; box-sizing: border-box; }
+
+.note { color: var(--muted); font-size: calc(13px * var(--fs)); margin-top: 8px; }
+.caption { font-size: calc(14px * var(--fs)); max-width: 64ch; }
+.desc { background: var(--panel); border-radius: 10px; padding: 10px 14px; margin-top: 10px; font-size: calc(14px * var(--fs)); }
+.desc[hidden] { display: none; }
+
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--tip-bg); border: 1px solid var(--tip-border); border-radius: 4px;
+  padding: 6px 8px; font-size: 13px; line-height: 1.4; box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  white-space: nowrap;
+}
+.tooltip[hidden] { display: none; }
+
+.slider-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; }
+.slider-row input[type=range] { width: 220px; }
+.slider-ticks { display: flex; justify-content: space-between; width: 220px; font-size: 12px; color: var(--muted); }
+
+.preview {
+  background: #fff3c4; color: #3a2e00; padding: 6px 12px; font: 13px system-ui, sans-serif;
+  border-bottom: 1px solid #e0cf87; display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center;
+}
+.preview a { color: #3a2e00; }
+.preview a[aria-current="page"] { font-weight: 700; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+@keyframes drawline { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+rect.no-ring:focus, rect.no-ring:focus-visible { outline: none; }
+
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+'use strict';
+/* ---------- Settings from the link ----------
+   ?v=1 or ?v=2   version (1 = basic fixes, 2 = basic fixes + autism-informed changes)
+   ?d=A or ?d=B   dataset
+   ?rid=...       optional response code (for logging to a sheet)
+   No v in the link (or &preview=1) shows a yellow preview bar for the research team only. */
+const qs = new URLSearchParams(location.search);
+const PREVIEW = !qs.has('v') || qs.get('preview') === '1';
+const V = qs.get('v') === '2' ? 2 : 1;
+const D = (qs.get('d') || 'A').toUpperCase() === 'B' ? 'B' : 'A';
+const RID = qs.get('rid') || '';
+
+/* Optional: paste a Google Apps Script web-app URL here to also send clicks to a sheet.
+   Leave empty to send clicks only to Qualtrics (see README). */
+const LOG_URL = '';
+
+const mq = (q) => { try { return window.matchMedia(q).matches; } catch (e) { return false; } };
+const REDUCED_MOTION = mq('(prefers-reduced-motion: reduce)');
+const SYSTEM_DARK = mq('(prefers-color-scheme: dark)');
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  if (attrs) for (const k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function htmlEl(tag, attrs, parent, text) {
+  const n = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'class') n.className = attrs[k];
+    else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+  }
+  if (text != null) n.textContent = text;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+const fmtInt = (n) => Math.round(n).toLocaleString('en-AU');
+
+/* ---------- Click logging ---------- */
+function log(action, detail) {
+  const msg = {
+    source: 'vis-study', chart: CHART_ID, v: V, d: D, rid: RID,
+    action, detail: detail == null ? '' : String(detail), t: new Date().toISOString()
+  };
+  try { if (window.parent !== window) window.parent.postMessage(msg, '*'); } catch (e) {}
+  if (LOG_URL) {
+    try {
+      fetch(LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(msg) });
+    } catch (e) {}
+  }
+}
+/* Tell Qualtrics how tall the page is, so the iframe can fit it (see README). */
+function postHeight() {
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({ source: 'vis-study', type: 'height', chart: CHART_ID, height: document.documentElement.scrollHeight }, '*');
+    }
+  } catch (e) {}
+}
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(c => {
+    const s = String(c);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ---------- Display mode and text size (Version 2 only) ---------- */
+let MODE = 'light';
+let SCALE = 1;
+const changeListeners = [];
+function onDisplayChange(fn) { changeListeners.push(fn); }
+function setMode(m, byUser) {
+  MODE = m;
+  document.body.classList.toggle('mode-dark', m === 'dark');
+  document.body.classList.toggle('mode-light', m !== 'dark');
+  if (byUser) log('display_mode', m);
+  changeListeners.forEach(f => f());
+}
+function setScale(s, byUser) {
+  SCALE = s;
+  document.documentElement.style.setProperty('--fs', String(s));
+  if (byUser) log('text_size', s > 1 ? 'large' : 'normal');
+  changeListeners.forEach(f => f());
+}
+
+function setupPage() {
+  document.body.classList.add('v' + V);
+  if (V === 2) setMode(SYSTEM_DARK ? 'dark' : 'light', false); // G11: respect system setting
+  if (PREVIEW) buildPreviewBar();
+  log('open');
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') log('hidden');
+    else log('visible');
+  });
+}
+
+function buildPreviewBar() {
+  const bar = document.createElement('div');
+  bar.className = 'preview';
+  htmlEl('strong', null, bar, 'Preview for the research team');
+  htmlEl('span', null, bar, '(participants never see this bar):');
+  [['1', 'A'], ['1', 'B'], ['2', 'A'], ['2', 'B']].forEach(([v, d]) => {
+    const a = htmlEl('a', { href: '?v=' + v + '&d=' + d + '&preview=1' }, bar, 'Version ' + v + ' · Data ' + d);
+    if (String(V) === v && D === d && qs.has('v')) a.setAttribute('aria-current', 'page');
+  });
+  document.body.insertBefore(bar, document.body.firstChild);
+}
+
+/* Visible toolbar (G12) with display mode (G11) and text size (G13). Version 2 only. */
+function buildToolbar(parent, opts) {
+  const tb = htmlEl('div', { class: 'toolbar', role: 'group', 'aria-label': 'Display and tools' }, parent);
+
+  const g1 = htmlEl('div', { class: 'tgroup' }, tb);
+  htmlEl('span', { class: 'tlabel' }, g1, 'Display:');
+  const bL = htmlEl('button', { type: 'button' }, g1, 'Light');
+  const bD = htmlEl('button', { type: 'button' }, g1, 'Dark');
+  const syncMode = () => {
+    bL.setAttribute('aria-pressed', String(MODE !== 'dark'));
+    bD.setAttribute('aria-pressed', String(MODE === 'dark'));
+  };
+  bL.onclick = () => { setMode('light', true); syncMode(); };
+  bD.onclick = () => { setMode('dark', true); syncMode(); };
+  syncMode();
+
+  const g2 = htmlEl('div', { class: 'tgroup' }, tb);
+  htmlEl('span', { class: 'tlabel' }, g2, 'Text size:');
+  const bN = htmlEl('button', { type: 'button' }, g2, 'Normal');
+  const bB = htmlEl('button', { type: 'button' }, g2, 'Large');
+  const syncSize = () => {
+    bN.setAttribute('aria-pressed', String(SCALE === 1));
+    bB.setAttribute('aria-pressed', String(SCALE > 1));
+  };
+  bN.onclick = () => { setScale(1, true); syncSize(); };
+  bB.onclick = () => { setScale(1.25, true); syncSize(); };
+  syncSize();
+
+  return tb;
+}
+
+/* Text description (G14) and download (G18), placed under the chart. Version 2 only. */
+function buildTools(parent, opts) {
+  const g3 = htmlEl('div', { class: 'tools', role: 'group', 'aria-label': 'More about this chart' }, parent);
+  const bDesc = htmlEl('button', { type: 'button', 'aria-expanded': 'false', 'aria-controls': 'desc' }, g3, 'Show text description');
+  bDesc.onclick = () => {
+    const open = bDesc.getAttribute('aria-expanded') !== 'true';
+    bDesc.setAttribute('aria-expanded', String(open));
+    bDesc.textContent = open ? 'Hide text description' : 'Show text description';
+    opts.onDescribe(open);
+    log('text_description', open ? 'open' : 'close');
+  };
+  const bDl = htmlEl('button', { type: 'button' }, g3, 'Download data (CSV)');
+  bDl.onclick = () => { opts.onDownload(); log('download'); };
+  return g3;
+}
+
+/* Side panel beside the chart when there is room, below it when narrow. */
+function chartLayout(wrapWidth, hasPanel) {
+  // Panel goes beside the chart only if the chart keeps at least ~460 px (more with large text)
+  const side = hasPanel && (wrapWidth - 256) >= 460 * (V === 2 ? SCALE : 1);
+  const chartW = side ? wrapWidth - 240 - 16 : wrapWidth;
+  return { side, chartW };
+}
+
+/* Label placement: try positions around a point and pick the one with least overlap. */
+function placeLabels(items, bounds) {
+  // items: {x, y, r, w, h, key}; returns map key -> {x, y, anchor}
+  const placed = [];
+  const out = {};
+  const circles = items.map(it => ({ x: it.x, y: it.y, r: it.r }));
+  const overlapRect = (a, b) => Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)) * Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+  const overlapCircle = (rc, c) => {
+    const cx = Math.max(rc.x1, Math.min(c.x, rc.x2)), cy = Math.max(rc.y1, Math.min(c.y, rc.y2));
+    const d = Math.hypot(c.x - cx, c.y - cy);
+    return d < c.r ? (c.r - d) * 20 : 0;
+  };
+  const order = items.slice().sort((a, b) => b.r - a.r);
+  for (const it of order) {
+    const gap = 4;
+    const cands = [
+      { x: it.x + it.r + gap, y: it.y, anchor: 'start' },
+      { x: it.x - it.r - gap, y: it.y, anchor: 'end' },
+      { x: it.x, y: it.y - it.r - gap - it.h / 2, anchor: 'middle' },
+      { x: it.x, y: it.y + it.r + gap + it.h / 2, anchor: 'middle' },
+      { x: it.x + it.r * 0.7 + gap, y: it.y - it.r * 0.7 - it.h / 2, anchor: 'start' },
+      { x: it.x - it.r * 0.7 - gap, y: it.y - it.r * 0.7 - it.h / 2, anchor: 'end' },
+      { x: it.x + it.r * 0.7 + gap, y: it.y + it.r * 0.7 + it.h / 2, anchor: 'start' },
+      { x: it.x - it.r * 0.7 - gap, y: it.y + it.r * 0.7 + it.h / 2, anchor: 'end' }
+    ];
+    let best = null, bestScore = Infinity;
+    for (const c of cands) {
+      const x1 = c.anchor === 'start' ? c.x : c.anchor === 'end' ? c.x - it.w : c.x - it.w / 2;
+      const rc = { x1, x2: x1 + it.w, y1: c.y - it.h / 2, y2: c.y + it.h / 2 };
+      let score = 0;
+      for (const p of placed) score += overlapRect(rc, p) * 3;
+      for (const ci of circles) if (!(ci.x === it.x && ci.y === it.y)) score += overlapCircle(rc, ci);
+      if (rc.x1 < bounds.x1) score += (bounds.x1 - rc.x1) * 50;
+      if (rc.x2 > bounds.x2) score += (rc.x2 - bounds.x2) * 50;
+      if (rc.y1 < bounds.y1) score += (bounds.y1 - rc.y1) * 50;
+      if (rc.y2 > bounds.y2) score += (rc.y2 - bounds.y2) * 50;
+      if (score < bestScore) { bestScore = score; best = { c, rc }; }
+    }
+    placed.push(best.rc);
+    out[it.key] = best.c;
+  }
+  return out;
+}
+
+/* Rough text width for label placement (avoids measuring every frame). */
+function textWidth(str, size, bold) { return str.length * size * (bold ? 0.6 : 0.55); }
+
+</script>
+<script>
+'use strict';
+const CHART_ID = 'health';
+const TITLE = 'Health spending and life expectancy';
+const YEARS = [2000, 2005, 2010, 2015, 2020];
+
+/* Made-up countries. Each row: name, population 2000 (millions), yearly population growth,
+   health spending per person 2000 (US$), yearly spending growth, life expectancy 2000, gain per 5 years.
+   Dataset B mirrors dataset A's structure with different names and slightly different values. */
+const SPEC = {
+  A: [
+    ['Avalon',   24.0,  0.010, 1200, 0.045, 74.1, 0.90],
+    ['Brevia',    6.2,  0.004, 3900, 0.030, 79.8, 0.50],
+    ['Corvalis', 58.0,  0.006, 2600, 0.035, 77.6, 0.60],
+    ['Dunmore',   3.1,  0.012,  650, 0.070, 68.9, 1.40],
+    ['Estrada',  41.5,  0.002, 4800, 0.025, 80.9, 0.40],
+    ['Felsland', 12.8,  0.015,  900, 0.050, 71.2, 1.10],
+    ['Grenmark',  9.4, -0.003, 3100, 0.020, 78.7, 0.50],
+    ['Halvia',   75.3,  0.008, 1800, 0.040, 75.0, 0.80]
+  ],
+  B: [
+    ['Isola',    10.1, -0.002, 3000, 0.022, 78.5, 0.50],
+    ['Jarrow',   71.8,  0.009, 1700, 0.042, 74.6, 0.80],
+    ['Kestria',   3.4,  0.011,  700, 0.068, 69.3, 1.35],
+    ['Lumen',    43.2,  0.003, 4650, 0.026, 80.6, 0.42],
+    ['Marovia',  25.3,  0.011, 1250, 0.044, 73.8, 0.92],
+    ['Norvik',    5.9,  0.005, 4000, 0.029, 80.1, 0.48],
+    ['Ostara',   13.5,  0.014,  880, 0.052, 71.6, 1.05],
+    ['Pellan',   55.4,  0.007, 2500, 0.036, 77.2, 0.62]
+  ]
+};
+const DATA = SPEC[D].map(c => ({
+  name: c[0],
+  values: YEARS.map((y, k) => ({
+    year: y,
+    pop: +(c[1] * Math.pow(1 + c[2], 5 * k)).toFixed(1),
+    spend: Math.round(c[3] * Math.pow(1 + c[4], 5 * k) / 10) * 10,
+    life: +(c[5] + c[6] * k).toFixed(1)
+  }))
+}));
+
+/* Version 1: one bright colour per country (conventional). Dark outline keeps 3:1 contrast. */
+const V1_FILLS = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', '#EDC948', '#B07AA1', '#FF9DA7'];
+
+let yi = 4;            // year index (2020)
+let selected = null;   // Version 2: marked country
+let shownPos = null;   // Version 1: positions currently drawn (for the year transition)
+let animFrame = null;
+
+const root = document.getElementById('app');
+let svg, chartbox, panel, tooltip, desc, layoutEl, yearButtons = [], slider, sliderLabel;
+
+function valuesAt(idx) { return DATA.map(c => ({ name: c.name, ...c.values[idx] })); }
+
+function build() {
+  setupPage();
+  const wrap = htmlEl('div', { class: 'wrap' }, root);
+  htmlEl('h1', { id: 'title' }, wrap, TITLE);
+  if (V === 2) {
+    // G4, G7: main message first, in bold; it does not answer the tasks
+    const intro = htmlEl('p', { class: 'intro' }, wrap);
+    htmlEl('strong', { class: 'takeaway' }, intro, 'Countries that spend more on health per person tend to have longer life expectancy.');
+  } else {
+    const row = htmlEl('div', { class: 'slider-row' }, wrap);
+    sliderLabel = htmlEl('label', { for: 'year' }, row, 'Year: ' + YEARS[yi]);
+    const col = htmlEl('div', null, row);
+    slider = htmlEl('input', { id: 'year', type: 'range', min: '0', max: String(YEARS.length - 1), step: '1', value: String(yi) }, col);
+    const ticks = htmlEl('div', { class: 'slider-ticks', 'aria-hidden': 'true' }, col);
+    YEARS.forEach(y => htmlEl('span', null, ticks, String(y)));
+    slider.addEventListener('input', () => { setYear(+slider.value); });
+    slider.addEventListener('change', () => log('select_year', YEARS[+slider.value]));
+  }
+
+  layoutEl = htmlEl('div', { class: 'layout' }, wrap);
+  chartbox = htmlEl('div', { class: 'chartbox' }, layoutEl);
+  svg = svgEl('svg', { role: 'img', 'aria-labelledby': 'title svgdesc' }, chartbox);
+  tooltip = htmlEl('div', { class: 'tooltip', hidden: '' }, chartbox);
+  if (V === 2) {
+    const side = htmlEl('div', { class: 'side' }, layoutEl);
+    buildToolbar(side, {});
+    const yr = htmlEl('div', { class: 'controls', role: 'group', 'aria-label': 'Choose a year' }, side);
+    htmlEl('span', { class: 'tlabel' }, yr, 'Year:');
+    YEARS.forEach((y, k) => {
+      const b = htmlEl('button', { type: 'button', 'aria-pressed': String(k === yi) }, yr, String(y));
+      b.onclick = () => { setYear(k); log('select_year', y); };
+      yearButtons.push(b);
+    });
+    panel = htmlEl('div', { class: 'panel', 'aria-live': 'polite' }, side);
+  } else {
+    // Version 1: colour legend on the right, as in many public charts. The side column has the
+    // same width as the Version 2 panel, so the chart is the same size in both versions.
+    const side = htmlEl('div', { class: 'side' }, layoutEl);
+    htmlEl('span', { class: 'tlabel', id: 'legendtitle' }, side, 'Country');
+    const legend = htmlEl('div', { class: 'legend vertical', role: 'list', 'aria-labelledby': 'legendtitle' }, side);
+    DATA.forEach((c, i) => {
+      const it = htmlEl('span', { class: 'item', role: 'listitem' }, legend);
+      htmlEl('span', { class: 'key dot', 'aria-hidden': 'true', style: `background:${V1_FILLS[i]}` }, it);
+      htmlEl('span', null, it, c.name);
+    });
+  }
+  htmlEl('p', { class: V === 2 ? 'note caption' : 'note' }, wrap, V === 2
+    ? 'Each bubble is a country, and bigger bubbles mean more people. The data are made up for this study.'
+    : 'Bubble size shows population. The data are made up for this study.');
+  if (V === 2) {
+    buildTools(wrap, { onDescribe: (open) => { desc.hidden = !open; updateDesc(); postHeight(); }, onDownload: download });
+    desc = htmlEl('div', { class: 'desc', id: 'desc', hidden: '' }, wrap);
+  }
+
+  onDisplayChange(() => { render(); });
+  let lastWidth = wrap.clientWidth;
+  new ResizeObserver(() => { const w = wrap.clientWidth; if (w !== lastWidth) { lastWidth = w; render(); } }).observe(wrap);
+  render();
+}
+
+function setYear(k) {
+  const from = yi;
+  yi = k;
+  if (V === 1) {
+    sliderLabel.textContent = 'Year: ' + YEARS[yi];
+    animateTo(from, k);
+  } else {
+    yearButtons.forEach((b, i) => b.setAttribute('aria-pressed', String(i === yi)));
+    render();
+    updatePanel();
+    updateDesc();
+  }
+}
+
+/* Version 1: conventional 0.6 s transition between years, labels hidden while moving. */
+function animateTo(from, to) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  const a = valuesAt(from), b = valuesAt(to);
+  const start = performance.now(), dur = 600;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const mix = a.map((p, i) => ({
+      name: p.name,
+      spend: p.spend + (b[i].spend - p.spend) * e,
+      life: p.life + (b[i].life - p.life) * e,
+      pop: p.pop + (b[i].pop - p.pop) * e
+    }));
+    draw(mix, t < 1);
+    if (t < 1) animFrame = requestAnimationFrame(step); else animFrame = null;
+  };
+  animFrame = requestAnimationFrame(step);
+}
+
+function render() { draw(valuesAt(yi), false); if (V === 2) { updatePanel(); updateDesc(); } }
+
+function colours() {
+  if (V === 1) return null;
+  return MODE === 'dark'
+    ? { fill: '#4f6375', stroke: '#9fb3c6', selFill: '#c98258', selStroke: '#f0c3a4' }
+    : { fill: '#b7c6d4', stroke: '#4a5d70', selFill: '#d08a62', selStroke: '#8a4220' };
+}
+
+function draw(points, moving) {
+  const wrapW = root.querySelector('.wrap').clientWidth - 32;
+  const lay = chartLayout(wrapW, true);
+  layoutEl.classList.toggle('stack', !lay.side);
+  const W = Math.max(300, lay.chartW);
+  const H = Math.round(Math.min(470, Math.max(320, W * 0.62)));
+  const fs = (V === 2 ? SCALE : 1) * 13;
+  const m = { l: 56 + (fs - 13) * 2, r: 18, t: 16, b: 50 + (fs - 13) * 2 };
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  svgEl('desc', { id: 'svgdesc' }, svg).textContent = describe();
+
+  const x0 = 0, x1 = 8000, y0 = 65, y1 = 85;
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+  const Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  const R = p => 5 + 22 * Math.sqrt(p / 90) * Math.min(1, W / 640);
+
+  const grid = svgEl('g', { class: 'axis', 'aria-hidden': 'true' }, svg);
+  for (let v = y0; v <= y1; v += 5) {
+    svgEl('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: 'var(--grid)' }, grid);
+    svgEl('text', { x: m.l - 8, y: Y(v), 'text-anchor': 'end', 'dominant-baseline': 'middle', 'font-size': fs }, grid).textContent = v;
+  }
+  for (let v = x0; v <= x1; v += 2000) {
+    svgEl('line', { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, stroke: 'var(--grid)' }, grid);
+    svgEl('text', { x: X(v), y: H - m.b + fs + 6, 'text-anchor': 'middle', 'font-size': fs }, grid).textContent = '$' + fmtInt(v);
+  }
+  svgEl('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: 'var(--axis)' }, grid);
+  svgEl('line', { x1: m.l, x2: m.l, y1: m.t, y2: H - m.b, stroke: 'var(--axis)' }, grid);
+  svgEl('text', { class: 'ttl', x: (m.l + W - m.r) / 2, y: H - 8, 'text-anchor': 'middle', 'font-size': fs }, grid)
+    .textContent = 'Health spending per person (US$)';
+  svgEl('text', { class: 'ttl', x: 14, y: (m.t + H - m.b) / 2, 'text-anchor': 'middle', 'font-size': fs,
+    transform: `rotate(-90 14 ${(m.t + H - m.b) / 2})` }, grid).textContent = 'Life expectancy (years)';
+
+  // Year shown faintly in the plot (both versions)
+  svgEl('text', { class: 'wm', x: W - m.r - 6, y: H - m.b - 10, 'text-anchor': 'end', 'font-size': fs * 2.2, 'aria-hidden': 'true',
+    'font-weight': 700 }, svg).textContent = moving ? '' : YEARS[yi];
+
+  const col = colours();
+  const order = points.map((p, i) => ({ ...p, i })).sort((a, b) => b.pop - a.pop);
+  // selected country drawn last so it sits on top
+  if (selected) order.sort((a, b) => (a.name === selected) - (b.name === selected));
+  const items = [];
+  const gB = svgEl('g', null, svg);
+  for (const p of order) {
+    const cx = X(p.spend), cy = Y(p.life), r = R(p.pop);
+    const isSel = selected === p.name;
+    const g = svgEl('g', {
+      tabindex: '0',
+      role: V === 2 ? 'button' : 'img',
+      'aria-label': `${p.name}: health spending $${fmtInt(p.spend)} per person, life expectancy ${p.life.toFixed(1)} years, population ${p.pop.toFixed(1)} million`,
+      'aria-pressed': V === 2 ? String(isSel) : null,
+      style: V === 2 ? 'cursor:pointer' : null
+    }, gB);
+    svgEl('circle', {
+      class: 'bubble', cx, cy, r,
+      fill: V === 1 ? V1_FILLS[p.i] : (isSel ? col.selFill : col.fill),
+      'fill-opacity': V === 1 ? 0.85 : 1,
+      stroke: V === 1 ? '#222222' : (isSel ? col.selStroke : col.stroke),
+      'stroke-width': isSel ? 2.5 : 1.2
+    }, g);
+    if (V === 1) {
+      const show = () => showTip(p, cx, cy, r, W);
+      g.addEventListener('pointerenter', () => { show(); log('hover_country', p.name); });
+      g.addEventListener('pointerleave', hideTip);
+      g.addEventListener('focus', show);
+      g.addEventListener('blur', hideTip);
+    } else {
+      const pick = () => { selected = selected === p.name ? null : p.name; log(selected ? 'select_country' : 'clear_country', p.name); render(); focusCountry(p.name); };
+      g.addEventListener('click', pick);
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+    }
+    g.dataset.name = p.name;
+    // C5: Version 2 prints the value that size encodes. Version 1 shows names only,
+    // as in many public bubble charts; the value appears only in the hover pop-up.
+    const label = V === 2 ? `${p.name} (${p.pop.toFixed(1)} m)` : p.name;
+    items.push({ key: p.name, x: cx, y: cy, r, w: textWidth(label, fs, isSel), h: fs * 1.2, label, isSel });
+  }
+  if (!moving) {
+    const pos = placeLabels(items, { x1: m.l + 2, x2: W - m.r, y1: m.t, y2: H - m.b - 2 });
+    const gL = svgEl('g', { 'aria-hidden': 'true' }, svg);
+    for (const it of items) {
+      const p = pos[it.key];
+      svgEl('text', { x: p.x, y: p.y, 'text-anchor': p.anchor, 'dominant-baseline': 'middle', 'font-size': fs,
+        'font-weight': it.isSel ? 700 : 400, 'pointer-events': 'none',
+        'paint-order': 'stroke', stroke: 'var(--bg)', 'stroke-width': 3, 'stroke-linejoin': 'round' }, gL).textContent = it.label;
+    }
+  }
+  postHeight();
+}
+
+function focusCountry(name) {
+  const g = svg.querySelector(`g[data-name="${name}"]`);
+  if (g) g.focus({ preventScroll: true });
+}
+
+/* Version 1 tooltip: appears over the chart, as in many public dashboards. */
+function showTip(p, cx, cy, r, W) {
+  tooltip.innerHTML = '';
+  htmlEl('strong', null, tooltip, p.name);
+  htmlEl('div', null, tooltip, `Health spending: $${fmtInt(p.spend)}`);
+  htmlEl('div', null, tooltip, `Life expectancy: ${p.life.toFixed(1)} years`);
+  htmlEl('div', null, tooltip, `Population: ${p.pop.toFixed(1)} million`);
+  tooltip.hidden = false;
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  let left = cx - tw / 2, top = cy - r - th - 6;
+  if (top < 0) top = cy + r + 6;
+  left = Math.max(0, Math.min(W - tw, left));
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = top + 'px';
+}
+function hideTip() { tooltip.hidden = true; }
+
+/* Version 2 side panel (G9, G15, G18): details beside the chart, all years at once. */
+function updatePanel() {
+  if (!panel) return;
+  panel.innerHTML = '';
+  if (!selected) {
+    htmlEl('h2', null, panel, 'Details');
+    htmlEl('p', null, panel, 'Select a country on the chart to see its details here. It stays marked when you change the year.');
+    return;
+  }
+  const c = DATA.find(d => d.name === selected);
+  htmlEl('h2', null, panel, c.name);
+  const t = htmlEl('table', null, panel);
+  const hr = htmlEl('tr', null, htmlEl('thead', null, t));
+  ['Year', 'Spending', 'Life exp.', 'Pop.'].forEach(h => htmlEl('th', { scope: 'col' }, hr, h));
+  const tb = htmlEl('tbody', null, t);
+  c.values.forEach((v, k) => {
+    const tr = htmlEl('tr', { class: k === yi ? 'current' : null }, tb);
+    htmlEl('td', null, tr, String(v.year));
+    htmlEl('td', null, tr, '$' + fmtInt(v.spend));
+    htmlEl('td', null, tr, v.life.toFixed(1));
+    htmlEl('td', null, tr, v.pop.toFixed(1));
+  });
+  htmlEl('p', { class: 'units' }, panel, 'Spending: US$ per person. Life expectancy: years. Population: millions.');
+  const b = htmlEl('button', { type: 'button', style: 'margin-top:10px' }, panel, 'Clear selection');
+  b.onclick = () => { log('clear_country', selected); selected = null; render(); };
+}
+
+function describe() {
+  const pts = valuesAt(yi);
+  const bySpend = pts.slice().sort((a, b) => b.spend - a.spend);
+  const byLife = pts.slice().sort((a, b) => b.life - a.life);
+  return `Bubble chart for ${YEARS[yi]}. Each bubble is one of ${pts.length} countries. ` +
+    `The horizontal axis shows health spending per person, from $0 to $8,000. The vertical axis shows life expectancy, from 65 to 85 years. ` +
+    `Countries that spend more tend to have longer life expectancy. ` +
+    `Spending ranges from $${fmtInt(bySpend[bySpend.length - 1].spend)} in ${bySpend[bySpend.length - 1].name} to $${fmtInt(bySpend[0].spend)} in ${bySpend[0].name}. ` +
+    `Life expectancy ranges from ${byLife[byLife.length - 1].life.toFixed(1)} years in ${byLife[byLife.length - 1].name} to ${byLife[0].life.toFixed(1)} years in ${byLife[0].name}.`;
+}
+function updateDesc() { if (desc && !desc.hidden) desc.textContent = describe(); }
+
+function download() {
+  const rows = [['Country', 'Year', 'Health spending per person (US$)', 'Life expectancy (years)', 'Population (millions)']];
+  DATA.forEach(c => c.values.forEach(v => rows.push([c.name, v.year, v.spend, v.life, v.pop])));
+  rows.push([]);
+  rows.push(['Note: the data are made up for this study.']);
+  downloadCSV('health-spending-and-life-expectancy.csv', rows);
+}
+
+build();
+
+</script>
+</body>
+</html>
