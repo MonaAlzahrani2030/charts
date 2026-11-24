@@ -444,12 +444,14 @@ function build() {
     stopBtn.onclick = () => { stopPlay(); log('stop'); };
     panel = htmlEl('div', { class: 'panel', 'aria-live': 'polite' }, side);
   }
-  htmlEl('p', { class: V === 2 ? 'note caption' : 'note' }, wrap, V === 2
+  // caption, tools and description sit in the chart column, so they stay directly under the chart
+  // even when the side panel grows (for example, when a country is selected)
+  htmlEl('p', { class: V === 2 ? 'note caption' : 'note' }, chartbox, V === 2
     ? 'Each line shows how often news articles mentioned one topic each year. Dashed lines mark the events. The data are made up for this study.'
     : UNIT + '. The data are made up for this study.');
   if (V === 2) {
-    buildTools(wrap, { onDescribe: (open) => { desc.hidden = !open; updateDesc(); postHeight(); }, onDownload: download });
-    desc = htmlEl('div', { class: 'desc', id: 'desc', hidden: '' }, wrap);
+    buildTools(chartbox, { onDescribe: (open) => { desc.hidden = !open; updateDesc(); postHeight(); }, onDownload: download });
+    desc = htmlEl('div', { class: 'desc', id: 'desc', hidden: '' }, chartbox);
   }
 
   onDisplayChange(() => render());
