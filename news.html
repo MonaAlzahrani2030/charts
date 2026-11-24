@@ -122,6 +122,8 @@ svg text.wm { fill: var(--grid); }
 
 rect.no-ring:focus, rect.no-ring:focus-visible { outline: none; }
 
+.howto { font-size: calc(14px * var(--fs)); margin: 4px 0 10px; max-width: 72ch; }
+
 </style>
 </head>
 <body>
@@ -213,8 +215,14 @@ let MODE = 'light';
 let SCALE = 1;
 const changeListeners = [];
 function onDisplayChange(fn) { changeListeners.push(fn); }
+/* Remembers a choice for this browser tab only, so it carries over when the chart is shown again
+   on the next task page. Fails silently (private windows, blocked storage). */
+function remember(key, val) { try { sessionStorage.setItem('vis-study-' + key, String(val)); } catch (e) {} }
+function recall(key) { try { return sessionStorage.getItem('vis-study-' + key); } catch (e) { return null; } }
+
 function setMode(m, byUser) {
   MODE = m;
+  if (byUser) remember('mode', m);
   document.body.classList.toggle('mode-dark', m === 'dark');
   document.body.classList.toggle('mode-light', m !== 'dark');
   if (byUser) log('display_mode', m);
@@ -222,6 +230,7 @@ function setMode(m, byUser) {
 }
 function setScale(s, byUser) {
   SCALE = s;
+  if (byUser) remember('scale', s);
   document.documentElement.style.setProperty('--fs', String(s));
   if (byUser) log('text_size', s > 1 ? 'large' : 'normal');
   changeListeners.forEach(f => f());
@@ -229,7 +238,12 @@ function setScale(s, byUser) {
 
 function setupPage() {
   document.body.classList.add('v' + V);
-  if (V === 2) setMode(SYSTEM_DARK ? 'dark' : 'light', false); // G11: respect system setting
+  if (V === 2) {
+    // G11: start from the device setting, unless the participant already chose on an earlier task page
+    const m = recall('mode');
+    setMode(m === 'dark' || m === 'light' ? m : (SYSTEM_DARK ? 'dark' : 'light'), false);
+    if (recall('scale') === '1.25') setScale(1.25, false);
+  }
   if (PREVIEW) buildPreviewBar();
   log('open');
   document.addEventListener('visibilitychange', () => {
@@ -359,6 +373,15 @@ window.addEventListener('load', () => {
   postHeight();
 });
 
+
+/* "How to use this chart" line under the title, so the chart's controls are noticed (C12). */
+function howTo(parent, text) {
+  const p = htmlEl('p', { class: 'howto' }, parent);
+  htmlEl('strong', null, p, 'How to use this chart: ');
+  p.appendChild(document.createTextNode(text));
+  return p;
+}
+
 </script>
 <script>
 'use strict';
@@ -422,6 +445,9 @@ function build() {
     // G4, G7: main message first, in bold; it does not answer the tasks
     const intro = htmlEl('p', { class: 'intro' }, wrap);
     htmlEl('strong', { class: 'takeaway' }, intro, 'Most topics were mentioned more often over time, with sudden rises or falls around major events.');
+    howTo(wrap, 'Select a year on the chart to see its details beside the chart, or click a topic to show it on its own. You can also play through the years, change the display (light or dark) and the text size, show a text description, or download the data.');
+  } else {
+    howTo(wrap, 'Point at the chart to see the values for a year.');
   }
   legendEl = htmlEl('div', { class: 'legend', role: V === 2 ? 'group' : null, 'aria-label': V === 2 ? 'Show one topic' : null }, wrap);
   htmlEl('p', { class: 'unit' }, wrap, UNIT);
@@ -456,7 +482,13 @@ function build() {
 
   onDisplayChange(() => render());
   new ResizeObserver(() => { const w = wrap.clientWidth; if (w !== lastWidth) { lastWidth = w; render(); } }).observe(wrap);
-  if (V === 1) introStart = performance.now();
+  // The Version 1 opening animation plays once per data set in this browser tab (not again on later
+  // task pages). &anim=0 in the link also skips it.
+  const introKey = 'intro-' + D;
+  if (V === 1 && qs.get('anim') !== '0' && recall(introKey) !== 'done') {
+    introStart = performance.now();
+    remember(introKey, 'done');
+  }
   lastWidth = wrap.clientWidth;
   render();
 }
